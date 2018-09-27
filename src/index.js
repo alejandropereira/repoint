@@ -1,4 +1,5 @@
-import fetch from 'isomorphic-fetch'
+require('es6-promise').polyfill()
+require('fetch-everywhere')
 import R from './ramda/ramda.repoint'
 import param from 'jquery-param'
 import pluralize from 'pluralize'
@@ -25,45 +26,46 @@ const jsonResponseHandler = (response) => response.json()
 
 
 // :: (String) -> (k: v) -> String -> [String] -> (k: v) -> (a -> b)
-const modifyWith = (methodName) => R.curry((config, url, idAttributes, params, headers = {}, type = 'json') => {
-  const idAttributeObject = R.pick(idAttributes, params)
-  const missingIdAttibutes = missingParams(idAttributeObject, idAttributes)
-  const lastIdAttribute = idAttributes[0]
-  let bodyParams
-  let buildedUrl
-  let data
+const modifyWith = (methodName) =>
+  R.curry((config, url, idAttributes, params, headers = {}, type = 'json') => {
+    const idAttributeObject = R.pick(idAttributes, params)
+    const missingIdAttibutes = missingParams(idAttributeObject, idAttributes)
+    const lastIdAttribute = idAttributes[0]
+    let bodyParams
+    let buildedUrl
+    let data
 
-  if (missingIdAttibutes.length !== 0) {
-    throw new Error(`You must provide "${missingIdAttibutes}" in params`)
-  }
+    if (missingIdAttibutes.length !== 0) {
+      throw new Error(`You must provide "${missingIdAttibutes}" in params`)
+    }
 
-  if (idAttributes.length === 1 && lastIdAttribute === IS_COLLECTION) {
-    bodyParams = params
-    buildedUrl = url
-  }
+    if (idAttributes.length === 1 && lastIdAttribute === IS_COLLECTION) {
+      bodyParams = params
+      buildedUrl = url
+    }
 
-  if (idAttributes.length > 1 || lastIdAttribute !== IS_COLLECTION) {
-    bodyParams = R.omit(idAttributes, params)
-    buildedUrl = urlParamsTransformer(url, idAttributeObject)
-  }
+    if (idAttributes.length > 1 || lastIdAttribute !== IS_COLLECTION) {
+      bodyParams = R.omit(idAttributes, params)
+      buildedUrl = urlParamsTransformer(url, idAttributeObject)
+    }
 
-  if (type === 'form') {
-    data = objectToFormData(config.paramsTransform(bodyParams))
-  } else {
-    data = JSON.stringify(config.paramsTransform(bodyParams))
-  }
+    if (type === 'form') {
+      data = objectToFormData(config.paramsTransform(bodyParams))
+    } else {
+      data = JSON.stringify(config.paramsTransform(bodyParams))
+    }
 
-  return fetch(`${config.host}${buildedUrl}`, {
-    ...config.fetchOpts,
-    method:  methodName,
-    body:    data,
-    headers: R.merge(prepareHeaders(type, config.headers), headers)
+    return fetch(`${config.host}${buildedUrl}`, {
+      ...config.fetchOpts,
+      method:  methodName,
+      body:    data,
+      headers: R.merge(prepareHeaders(type, config.headers), headers)
+    })
+      .then(config.beforeError)
+      .then(config.responseHandler)
+      .then(json => json)
+      .then(config.beforeSuccess)
   })
-    .then(config.beforeError)
-    .then(config.responseHandler)
-    .then(json => json)
-    .then(config.beforeSuccess)
-})
 
 const commonMethods = {
   // :: (k: v) -> String -> [String] -> (k: v) -> (k: v) -> (a -> b)
@@ -88,7 +90,9 @@ const commonMethods = {
       queryParams = R.omit(idAttributes, params)
     }
 
-    const fullUrl = R.isEmpty(queryParams) ? `${config.host}${buildedUrl}` : `${config.host}${buildedUrl}?${param(config.paramsTransform(queryParams))}`
+    const fullUrl = R.isEmpty(queryParams)
+      ? `${config.host}${buildedUrl}`
+      : `${config.host}${buildedUrl}?${param(config.paramsTransform(queryParams))}`
 
     return fetch(fullUrl, {
       ...config.fetchOpts,
@@ -146,7 +150,6 @@ const commonMethods = {
 
   // :: (k: v) -> String -> [String] -> (k: v) -> (a -> b)
   delete: R.curry((config, url, idAttributes, params, headers = {}, type = 'json') => {
-    console.log(idAttributes)
     const idAttributeObject = R.pick(idAttributes, params)
     const missingIdAttibutes = missingParams(idAttributeObject, idAttributes)
     const lastIdAttribute = idAttributes[0]
